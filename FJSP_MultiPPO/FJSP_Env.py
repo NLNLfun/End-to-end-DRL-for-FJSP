@@ -80,7 +80,7 @@ class FJSP(gym.Env, EzPickle):
 
                 #self.LBs为所有task最快的完工时间
                 # adj matrix
-        		# state transition:更新adj matrix
+        		# state transition:更新adj matrix disjunctive arc
                 precd, succd = self.getNghbs(action[i], self.opIDsOnMchs[i])
 
                 self.adj[i, action[i]] = 0
