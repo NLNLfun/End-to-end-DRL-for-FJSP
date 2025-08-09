@@ -56,8 +56,8 @@ class FJSP(gym.Env, EzPickle):
 
                 self.m[i][row][col]=mch_a[i]
                 # UPDATE STATE:
-                # permissible left shift 允许向左移动
-
+                # permissible left shift 允许向左移动，在決定動作後,此function會找到最早可以開始的時間，再不違反任合限制的情況下
+				# 更新排程與時間
                 startTime_a, flag = permissibleLeftShift(a=action[i], mch_a=mch_a[i], durMat=self.dur_cp[i], mchMat=self.m[i],
                                                          mchsStartTimes=self.mchsStartTimes[i], opIDsOnMchs=self.opIDsOnMchs[i],mchEndTime=self.mchsEndTimes[i])
                 self.flags.append(flag)
@@ -80,6 +80,7 @@ class FJSP(gym.Env, EzPickle):
 
                 #self.LBs为所有task最快的完工时间
                 # adj matrix
+        		# state transition:更新adj matrix
                 precd, succd = self.getNghbs(action[i], self.opIDsOnMchs[i])
 
                 self.adj[i, action[i]] = 0
@@ -131,6 +132,7 @@ class FJSP(gym.Env, EzPickle):
             for b,c in zip(self.up_mchendtime[i],range(self.number_of_machines)):
                 self.up_mchendtime[i][c] = [0 if i < 0 else i for i in b]
             rewards.append(reward)'''
+        	# 計算rewards
             reward = -(self.LBm[i].max() - self.max_endTime[i])
             if reward == 0:
                 reward = configs.rewardscale
@@ -148,6 +150,7 @@ class FJSP(gym.Env, EzPickle):
         return self.adj, np.array(feas), rewards, dones, self.omega, masks,mchForJobSpaces,self.mask_mch,self.mch_time,self.job_time
 
     @override
+    # reset是在訓練中重新生成環境
     def reset(self, data):
         #data (batch_size,n_job,n_mch,n_mch)
 
@@ -175,7 +178,7 @@ class FJSP(gym.Env, EzPickle):
         self.adj = []
         # initialize adj matrix
         for i in range(self.batch_sie):
-            conj_nei_up_stream = np.eye(self.number_of_tasks, k=-1, dtype=np.single)
+            conj_nei_up_stream = np.eye(self.number_of_tasks, k=-1, dtype=np.single) #這段程式碼建立adjacency Matrix，conj_nei_up_stream代表工序的先後順序，也就是論文的conjunctive arcs
             conj_nei_low_stream = np.eye(self.number_of_tasks, k=1, dtype=np.single)
             # first column does not have upper stream conj_nei
             conj_nei_up_stream[self.first_col] = 0
@@ -240,9 +243,10 @@ class FJSP(gym.Env, EzPickle):
         self.input_mean =  np.array(input_mean)
         self.input_2d = np.concatenate([self.input_min.reshape((self.batch_sie,self.number_of_jobs,self.number_of_machines,1)),
                                         self.input_mean.reshape((self.batch_sie,self.number_of_jobs,self.number_of_machines,1))],-1)
-
+                                        
+        ＃開始建立圖的node feature(LB_t(O_ij),I_t)
         self.LBs = np.cumsum(self.input_2d,-2)
-        self.LBm = np.cumsum(self.input_min,-1)
+        self.LBm = np.cumsum(self.input_min,-1) # LB_t
 
         self.initQuality = np.ones(self.batch_sie)
         for i in range(self.batch_sie):
@@ -251,7 +255,7 @@ class FJSP(gym.Env, EzPickle):
         self.max_endTime = self.initQuality
 
         self.job_time = np.zeros((self.batch_sie, self.number_of_jobs))
-        self.finished_mark = np.zeros_like(self.m)
+        self.finished_mark = np.zeros_like(self.m)# I_t
 #--------------------------------------------------------------------------------------------------------------------------
         '''fea = self.LBm.reshape(self.batch_sie,-1, 1) / configs.et_normalize_coef'''
         fea = np.concatenate((self.LBm.reshape(self.batch_sie,-1, 1) / configs.et_normalize_coef
@@ -266,13 +270,14 @@ class FJSP(gym.Env, EzPickle):
                               # wkr.reshape(-1, 1)/configs.wkr_normalize_coef,
                               self.finished_mark.reshape(self.batch_sie,-1, 1)), axis=-1)'''
         # initialize feasible omega
-        self.omega = self.first_col.astype(np.int64)
+        self.omega = self.first_col.astype(np.int64) # 儲存所有尚未被排程的工序
 
         # initialize mask
         self.mask = np.full(shape=(self.batch_sie,self.number_of_jobs), fill_value=0, dtype=bool)
 
         self.mch_time = np.zeros((self.batch_sie,self.number_of_machines))
         # start time of operations on machines
+        # 下面這些陣列記錄每台機器的狀態，也就是S_t^m
         self.mchsStartTimes = -configs.high * np.ones((self.batch_sie,self.number_of_machines,self.number_of_tasks))
         self.mchsEndTimes=-configs.high * np.ones((self.batch_sie,self.number_of_machines,self.number_of_tasks))
         # Ops ID on machines
